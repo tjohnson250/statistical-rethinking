@@ -1,0 +1,565 @@
+---
+title: "StatisticalRethinking"
+---
+
+## Statistical Rethinking
+
+Explorations in Richard McElreth's Statistical Rethinking course. As of 9/2025 we are at a point where the online lectures are from the unreleased third edition of his book. This document is an effort to follow along with the current lectures using a combination of the second edition and the new lectures.
+
+```{r}
+#install.packages(c("coda","mvtnorm","devtools","loo","dagitty","shape"))
+#remotes::install_github("stan-dev/cmdstanr")
+#devtools::install_github("rmcelreath/rethinking")
+```
+
+```{r}
+library(rethinking)
+library(ggplot2)
+
+```
+
+Define a grid of 20 probabilities of water from 0 to 1 and set the prior probability of each one to 1,
+
+reflecting a uniform prior.
+
+```{r}
+p_grid <- seq(from = 0, to = 1, length.out = 20)
+p_grid
+prior <- rep(1, 20)
+prior
+```
+
+Calculate the likelihood of landing on water 6 times out of 9 tosses of the globe for each probability in the grid. The likelihood is the probability of producing the data given a specific probability, or
+
+$$
+P(W, L|p)
+$$
+
+where W is the number of tosses landing on water, L is the number of tosses landing on land, and $p$ is the hypothesized proportion of water on the globe.
+
+```{r}
+likelihood <- dbinom( 6, size = 9, prob=p_grid)
+likelihood
+```
+
+These are hard to see so let's graph them:
+
+```{r}
+plot( p_grid , likelihood , type="b" ,
+xlab="probability of water" , ylab="likelihood" )
+mtext( "20 points" )
+```
+
+Multiply the likelihood and the prior to compute the unstandardized posterior probability of each $p$. Since we used a uniform prior, this graph is identical to the previous:
+
+```{r}
+unstd.posterior <- likelihood * prior
+plot( p_grid , unstd.posterior , type="b" ,
+xlab="probability of water" , ylab="unstandardized posterior probability" )
+mtext( "20 points" )
+```
+
+Standardize the posterior by dividing each unstabilized value by the sum of all values. This gives us the posterior distribution of possible proportions of water given that we have observed 6 water out of 9 tosses. Since we have a discrete set of possible proportions of water, the sum of standaridized probabilities will sum to 1.
+
+```{r}
+posterior <- unstd.posterior / sum(unstd.posterior)
+plot( p_grid , posterior , type="b" ,
+xlab="probability of water" , ylab="posterior probability" )
+mtext( "20 points" )
+```
+
+To see how different priors affect the posterior probability distribution given the same data, let's wrap our code in a function that takes different probabilities, priors, and data, and try a few different priors.
+
+```{r}
+globe_posterior <- function(w, n, p_grid, prior) {
+  likelihood <- dbinom( w, size = n, prob=p_grid)
+  unstd.posterior <- likelihood * prior
+  return(posterior <- unstd.posterior / sum(unstd.posterior))
+}
+```
+
+Recall that above we used a uniform prior. Now lets see what the posterior distribution looks like if we set the prior for all $p$'s less than .5 to 0 and all others to 1.
+
+Here is the prior:
+
+```{r}
+prior2 <- ifelse(p_grid < 0.5, 0, 1)
+plot(p_grid, prior2, type = "b")
+```
+
+And here is the posterior probability distribution:
+
+```{r}
+posterior2 <- globe_posterior(6, 9, p_grid, prior2)
+plot( p_grid , posterior2 , type="b" ,
+xlab="probability of water" , ylab="posterior probability" )
+mtext( "20 points" )
+```
+
+This should not be surprising: because the posterior probability distribution is computed by multiplying the likelihood by the prior. Any possible proportion of water with a prior of 0 will have a posterior probability of 0 no matter what data we observe.
+
+Let's look at a different prior:
+
+```{r}
+prior3 <- exp( -5*abs(p_grid - 0.5))
+plot(p_grid, prior3, type = "b")
+```
+
+And the posterior:
+
+```{r}
+posterior3 <- globe_posterior(6, 9, p_grid, prior3)
+plot( p_grid , posterior3 , type="b" ,
+xlab="probability of water" , ylab="posterior probability" )
+mtext( "20 points" )
+```
+
+In this example we were estimating the posterior of just one parameter $p$ with 20 possible values; however, many realistic models will have many more parameters, each with far more possible values. Grid approximation is computationally infeasible for such combinations. Instead, we can use other methods, such as quadratic approximation that uses a Gaussian distribution to approximate the posterior distribution. A Gaussian distribution is described by only two numbers: its mean and its variance. This method is called "quadratic approximation" because a Gaussian distribution forms a parabola and a parabola is a quadratic function.
+
+To do quadratic approximation we'll use `quap` from the `rethinking` package. For the globe tossing data we can use `quap` by providing formulas that specify the likelihood and a prior:
+
+```{r}
+globe.qa <- quap(
+alist(
+W ~ dbinom( W+L ,p) , # binomial likelihood
+p ~ dunif(0,1) # uniform prior
+) ,
+data=list(W=6,L=3) )
+# display summary of quadratic approximation
+precis( globe.qa )
+```
+
+To graph the quadratic approximation, we can graph a Gaussian with the mean and standard deviation reported above. Here, we graph the grid search posterior on the left and the quadratic approximation on the right. Note that the shape of the distributions are similar, but the y-axis values are different. This is because the grid approximation is a discrete probability distribution, where the probabilities of the 20 points sum to 1, but the quadratic approximation is a probability density in which the area under the curve sums to 1.
+
+A quadratic approximation is most accurate near the mode of the distribution. Unlike the grid approximation, the quadratic approximation shows a non-zero probability for a globe where $p = 1$ despite the data containing a mixture of water and land.
+
+```{r}
+par(mfrow = c(1,2))
+plot( p_grid , posterior , type="b",
+xlab="probability of water" , ylab="posterior probability")
+mtext( "Grid Approximation (20 points)" )
+curve( dnorm(x, 0.67, 0.16), lty=2, xlab="probability of water", ylab="density")
+mtext( "Quadratic Approximation" )
+```
+
+We can also compare the quadratic approximation to the exact posterior distribution by using the beta distribution. The beta distribution is defined on the interval from 0 to 1 by two parameters $\alpha$ and $\beta$. When $\alpha = 1$ and $\beta = 1$, the beta distribution is a uniform distribution from 0 to 1:
+
+```{r}
+curve(dbeta(x, 1, 1), lty=2, xlab="probability of water", ylab="density")
+```
+
+In the globe tossing example, we can use $\text{Beta}(1, 1)$ to specify a uniform prior for all proportions of water on the globe from 0 to 1. The beta distribution is the conjugate prior of the binomial distribution, which in practical terms means that if we specify a prior probability distribution over $p$ as $\text{Beta}(\alpha, \beta)$ and then observe water $W$ times and land $L$ times, the exact posterior distribution is given by
+
+$$
+\text{Beta}(\alpha + W, \beta + L)
+$$
+
+So with a uniform prior over $p$, the posterior distribution is simply
+
+$$
+\text{Beta}(1 + W, 1 + L)
+$$
+
+Let's plot the exact posterior distribution (the solid line) along with the quadratic approximation (dashed):
+
+```{r}
+curve(dbeta(x, 1 + 6, 1 + 3), lty = 1, xlab="probability of water", ylab="density")
+curve( dnorm(x, 0.67, 0.16), lty=2, add=TRUE)
+legend("topleft", legend =c("Exact", "Approximation"), lty = c(1, 2))
+```
+
+A quadratic approximation can get better with more data points. Suppose we observe 100 tosses with the same proportion $p=.7$ of water on the globe.
+
+```{r}
+# Simulate 100 tosses of the globe where 1 indicates landing on water
+# Sum to get the number of tosses that land on water
+W <- sum(rbinom(100, 1, .7))
+L <- 100 - W
+
+# Use quadratic approximation to estimate the posterior with 100 observations
+globe.qa <- quap(
+alist(
+W ~ dbinom( W+L ,p) , # binomial likelihood
+p ~ dunif(0,1) # uniform prior
+) ,
+data=list(W=W,L=L) )
+# display summary of quadratic approximation
+precis( globe.qa )
+```
+
+This give us a much better approximation:
+
+```{r}
+curve(dbeta(x, 1 + W, 1 + L), lty = 1, xlab="probability of water", ylab="density")
+curve( dnorm(x, 0.81, 0.04), lty=2, add=TRUE)
+legend("topleft", legend =c("Exact", "Approximation"), lty = c(1, 2))
+```
+
+```{r}
+sim_globe <- function(p=0.7, N=9) {
+  sample(c("W", "L"), size=N, prob = c(p, 1-p), replace=TRUE)
+}
+sim_globe()
+```
+
+We can use the posterior distribution to predict future data points. This gives us the posterior predictive distribution of plausible new observations, given our posterior distribution, which is based on the prior and the observations we have seen so far.
+
+```{r}
+# Calculate the posterior distribution given a uniform prior over all
+# possible values of proportion of water on the globe 
+# and sample probabilities from that distribution
+post_samples <- rbeta(1e4, 6+1, 3+1)
+
+# For each sampled probability, toss the globe 10 times and count
+# the number of times it lands on water
+pred_post <- sapply(post_samples, function(p) sum(sim_globe(p,10)=="W"))
+
+# Summarize the results in a table from 0 to 10 
+tab_post <- table(pred_post)
+
+# Calculate distribution of W given just p = 0.64
+pred_post_p64 <- replicate(1e4, sum(sim_globe(0.64,10)=="W"))
+
+hist(pred_post_p64)
+for (i in 0:10) lines(c(i,i), c(0,tab_post[i+1]), lwd=4, col=4)
+
+
+```
+
+From Stat rethinking 2023 - 03 Geocentric Models <https://youtu.be/tNOu-SEacNU?si=2-pZQgk1-X1KmWEn&t=3362>
+
+McElreath specifies a standard workflow for analysis:
+
+1.  State a clear question
+2.  Sketch your causal assumptions
+3.  Use the sketch to define a generative model
+4.  Use the generative model to build an estimator
+5.  Profit
+
+In this example, we use the Howell1 dataset on weight and height. Let's load that and plot it:
+
+```{r}
+library(rethinking)
+data(Howell1)
+plot(Howell1$height, Howell1$weight, col=2, lwd=3)
+```
+
+In this example, we focus only on adults (those with age \>= 18):
+
+```{r}
+d2 <- Howell1[Howell1$age>=18,]
+plot(d2$height, d2$weight, col=2, lwd=3)
+```
+
+### Step 1: Question/goal/estimand
+
+Describe association between adult weight and height
+
+### Step 2: Scientific model with sketch of causal assumptions
+
+We make this causal. Height causes weight, so weight is a function of height $H$ and unobserved stuff $U$:
+
+$$
+W = f(H, U)
+$$
+
+We can also draw a simple causal DAG for this model. Here U is unobserved, but ggdag does not indicate this on the graph. We can use this by using ggplot to plot the dag, but that adds too much complexity.
+
+```{r}
+library(ggdag)
+dag <- dagify(W ~ H + U, latent = c("U"), coords=time_ordered_coords())
+ggdag(dag) + theme_dag()
+```
+
+### Step 3: Use the sketch to define a generative model
+
+Create a generative model of weight as a function of height and unobserved stuff. $a$, the intercept, is not used here, presumably because we know that when height is zero, weight must be zero, so the correct intercept is always zero. ***We need to check this with McElreath's later use of linear regression to be sure this is the case.*** $a$ does appear in the statistical model, because we need to model an intercept for the regression lines.
+
+```{r}
+# R code 3.2
+sim_weight <- function(H, b, sd) {
+  U <- rnorm(length(H), 0, sd)
+  W <- b*H + U
+  return(W)
+}
+```
+
+Now that we have a generative model, let's simulate and plot some data:
+
+```{r}
+# R code 3.3
+H <- runif(200, min=130, max=170)
+W <- sim_weight(H, b=0.5, sd=5)
+plot(W ~ H, col=2, lwd=3)
+```
+
+### Step 4: Use the generative model to build an estimator
+
+We want to estimate how the average weight changes with height:
+
+$$
+E(W_i|H_i)=\alpha + \beta H_i
+$$
+
+This means that we want the posterior distribution of the parameters that define the regression line given a dataset. The posterior probability of a specific line is:
+
+$$
+\text{Pr}(\alpha, \beta, \sigma | H_i, W_i)
+$$
+
+where $\alpha$ is the intercept, $\beta$ is the slope, and $\sigma$ defines the error around the line: how much variation there is in individual people around the expectation.
+
+This probability is a function of the number of ways we could see the observation $W_i$ given $W_i, \alpha, \beta$ and $\sigma$ times the prior probability of $\alpha, \beta$ and $\sigma$:
+
+$$
+\text{Pr}(\alpha, \beta, \sigma | H_i, W_i) = \frac{\Pr(W_i | H_i, \alpha, \beta, \sigma) \Pr(\alpha, \beta, \sigma)}{Z}
+$$
+
+We will specify the estimator as a statistical model using quap from the rethinking package:
+
+```{r}
+m3.1 <- quap(
+  alist(
+    W ~ dnorm(mu, sigma),
+    mu <- a + b*H,
+    a ~ dnorm(0,10),
+    b ~ dunif(0,1),
+    sigma ~ dunif(0,10)
+  ), data = list(W=W, H=H)
+)
+```
+
+This corresponds to the following statistical model:
+
+$$
+\begin{align*}
+W_i &\sim \text{Normal}(\mu_i, \sigma) \\
+\mu_i &= \alpha + \beta H_i \\
+\alpha &\sim \text{Normal}(0,10) \\
+\beta &\sim \text{Uniform}(0, 1) \\
+\sigma &\sim \text{Uniform}(0, 10)
+\end{align*}
+$$
+
+Now that we have specified some priors, we can do a prior predictive simulation to check the priors and plot some lines based on the priors for $\alpha$ and $\beta$ that we have specified above.
+
+```{r}
+n <- 1e3
+a <- rnorm(n,0,10)
+b <- runif(n,0,1)
+plot(NULL, xlim=c(130, 170), ylim=c(50,90),
+     xlab="height (cm)", ylab = "weight (kg)" )
+for (j in 1:50 ) abline(a=a[j], b=b[j], lwd=2, col=2)
+```
+
+### Step 4: Validate the statistical model
+
+Test the statistical model with simulated observations from the scientific model. `quap` calculates the posterior distribution and `precis` gives a summary of the marginal distributions of each unknown.
+
+**Questions:**
+
+1.  **How do we get the complete distributions for each unknown**
+2.  **How do we get the posterior joint distribution for all three. This should be a 3-dimensional distribution that we could plot.**
+3.  **Given the model, are the distributions of all of these variables independent?**
+
+```{r}
+# Simulate a sample of 3 people
+set.seed(93)
+H <- runif(10, 130, 170)
+W <- sim_weight(H, b=0.5, sd=5)
+
+# run the model on the simulated data
+m3.1 <- quap(
+  alist(
+    W ~ dnorm(mu, sigma),
+    mu <- a + b*H,
+    a ~ dnorm(0,10),
+    b ~ dunif(0,1),
+    sigma ~ dunif(0,10)
+  ), data = list(W=W, H=H)
+)
+
+# summary
+precis(m3.1)
+```
+
+When testing, we should change the simulation inputs above and check that the estimator is recovering them.
+
+### Step 5: Analyze the Data
+
+Now that we have validated the estimator we can analyze the data
+
+```{r}
+dat <- list(W=d2$weight, H=d2$height)
+m3.2 <- quap(
+  alist(
+    W ~ dnorm(mu, sigma),
+    mu <- a + b*H,
+    a ~ dnorm(0,10),
+    b ~ dunif(0,1),
+    sigma ~ dunif(0,10)
+  ), data = dat
+)
+
+# summary
+precis(m3.2)
+```
+
+To look at details can use pairs.
+
+-   The diagonal plots the probability density of the posterior distribution of each of the unknowns.
+
+-   The three graphs in the upper right plot the relationship between each pair of unknowns
+
+-   Note that $a$ and $b$ are strongly related. This is because a b (the slope) of the line increases, a (the intercept) must necessarily decrease and visaversa. You cannot interpret the intercept and the slope separately. This is also why, in more complex linear regression with additional covariates, you cannot use a table of coefficients to understand what the model is doing, because each is dependent on the others. (Read about the Table 2 Fallacy for more information). Instead you need to "push out posterior predictions"??
+
+```{r}
+pairs(m3.2)
+```
+
+To "push out posterior predictions" we extract samples from the posterior. These samples have the right covariance structure across each row (each sample). The samples for each parameter represent the posterior distribution. These are not posterior predictive samples. The parameter posteriors represent plausible values for each parameter. In contrast, posterior predictive samples give plausible values for new observations.
+
+```{r}
+post <- extract.samples(m3.2)
+head(post)
+```
+
+We can plot these samples as lines against the data that we used to estimate them:
+
+```{r}
+post <- extract.samples(m3.2)
+plot(d2$height, d2$weight, col=2, lwd=3,
+     xlab = "height (cm)", ylab = "weight (kg)")
+for ( j in 1:20 )
+  abline(a=post$a[j], b=post$b[j], lwd=1)
+```
+
+We can also "watch" the Bayesian updating process by feeding quap the data incrementally.
+
+Here is a set of lines after just one row of data:
+
+```{r}
+#| fig-width: 12
+#| fig-height: 10
+# Set up a 2x2 plot array
+par(mfrow = c(2, 2))#, pty = "s")  # pty = "s" ensures square (1:1 aspect ratio) plots
+
+# Define sample sizes
+sample_sizes <- c(5, 10, 50, 100)
+
+for (n in sample_sizes) {
+  # Subset data
+  d2n = head(d2, n)
+  datn <- list(W=d2n$weight, H=d2n$height)
+  
+  m3.2n <- quap(
+    alist(
+      W ~ dnorm(mu, sigma),
+      mu <- a + b*H,
+      a ~ dnorm(0,10),
+      b ~ dunif(0,1),
+      sigma ~ dunif(0,10)
+    ), data = datn
+  )
+
+  post <- extract.samples(m3.2n)
+  
+  # Plot regression lines from posterior samples
+  plot(d2$height, d2$weight, col=2, lwd=3,
+       xlab = "height (cm)", ylab = "weight (kg)", main = paste0("N=", n),
+       asp=1)
+  for ( j in 1:20 )
+    abline(a=post$a[j], b=post$b[j], lwd=1)
+}
+
+# Reset plotting parameters to default
+par(mfrow = c(1, 1), pty = "m")
+```
+
+In Bayesian regression there is no single line, you have to sample lines from the posterior, which is why McElreath says the posterior is full of lines. You want to use the entire posterior—there is not one line that is the right answer.
+
+These lines estimate the average weight for a person with a given height. One critical issue is that since these are samples, these lines represent the posterior predictive distrbution which represents
+
+Let's return to the graph after estimating the posterior with the full dataset:
+
+```{r}
+post <- extract.samples(m3.2)
+plot(d2$height, d2$weight, col=2, lwd=3,
+     xlab = "height (cm)", ylab = "weight (kg)")
+for ( j in 1:20 )
+  abline(a=post$a[j], b=post$b[j], lwd=1)
+```
+
+This plots a sample of lines drawn from the posterior, but does not show $\sigma$. We can also plot the confidence/credible intervals (which is this here?) based on sigma. **This looks like we are now drawing from posterior predictive samples to create a posterior predictive distribution.**
+
+McElreath's 2023 - 03 video lecture does not explain this code very well, so I will step through it here in detail.
+
+We first create a list of ranging from low to high:
+
+```{r}
+height_seq <- seq(130, 190, len = 20)
+height_seq
+```
+
+Next, we use the posterior distribution to draw 1000 simulated weights for each height. Note that this is sampling over all the lines represented by the complete posterior. When graphed, the samples for each of the weights look like this:
+
+```{r}
+W_postpred <- sim(m3.2, data=list(H=height_seq)) # sim defaults to N = 1000 samples for each input
+plot(rep(height_seq, 1000), as.vector(W_postpred))
+```
+
+There is a lot of overplotting in this graph so it is hard to see the distribution of the values in each column.
+
+```{r}
+library(ggplot2)
+library(tidyr)
+
+# Convert to long format
+df <- data.frame(W_postpred)
+colnames(df) <- height_seq  # Use x_vals as column names
+df$row <- 1:1000
+
+df_long <- pivot_longer(df, -row, names_to = "x_val", values_to = "y_val")
+df_long$x_val <- as.numeric(df_long$x_val)
+
+ggplot(df_long, aes(x = factor(x_val), y = y_val)) +
+  geom_violin(fill = "lightblue", alpha = 0.7) +
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  labs(x = "X Values", y = "Posterior Values") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+We can also use the values to graph the posterior mean at each height and the 95% credible interval. The 95% credible interval means that there is a 95% chance that the true mean lies within the interval.
+
+```{r}
+library(dplyr)
+summaries <- df_long %>%
+  group_by(x_val) %>%
+  summarise(
+    mean = mean(y_val),
+    median = median(y_val),
+    q025 = quantile(y_val, 0.025),
+    q975 = quantile(y_val, 0.975),
+    .groups = "drop"
+  )
+
+# Plot credible intervals
+ggplot(summaries, aes(x = x_val)) +
+  geom_ribbon(aes(ymin = q025, ymax = q975), alpha = 0.3) +
+  geom_line(aes(y = mean), color = "red") +
+  geom_line(aes(y = median), color = "blue", linetype = "dashed") +
+  labs(x = "X Values", y = "Posterior Values",
+       title = "Posterior Means and 95% Credible Intervals")
+```
+
+```{r}
+height_seq <- seq(130, 190, len = 20)
+W_postpred <- sim(m3.2,
+                  data=list(H=height_seq))
+W_PI <- apply(W_postpred, 2, PI)
+plot(d2$height, d2$weight, col=2, lwd=3,
+    xlab = "height (cm)", ylab = "weight (kg)", main = "5% and 95% ??Credible?? Interval",
+    asp=1)
+lines(height_seq, W_PI[1,], lty=2, lwd=2)
+lines(height_seq, W_PI[2,], lty=2, lwd=2)
+```
