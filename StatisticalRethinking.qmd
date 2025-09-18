@@ -6,16 +6,34 @@ title: "StatisticalRethinking"
 
 Explorations in Richard McElreth's Statistical Rethinking course. As of 9/2025 we are at a point where the online lectures are from the unreleased third edition of his book. This document is an effort to follow along with the current lectures using a combination of the second edition and the new lectures.
 
+We start by installing the necessary packages.
+
 ```{r}
 #install.packages(c("coda","mvtnorm","devtools","loo","dagitty","shape"))
 #remotes::install_github("stan-dev/cmdstanr")
 #devtools::install_github("rmcelreath/rethinking")
+
+# List of packages to check and install
+packages_to_install <- c("coda","mvtnorm","devtools","loo","dagitty","shape")
+
+# pak checks to see if a library is installed and if not installs it from either CRAN
+# or GitHub depending on its specification
+if (!require("pak")) {
+  install.packages("pak")
+}
+
+pak::pkg_install(c(
+  "coda","mvtnorm","devtools","loo","dagitty","shape",
+  "stan-dev/cmdstanr",
+  "rmcelreath/rethinking"
+))
 ```
+
+Next, we load the libraries we need for this section.
 
 ```{r}
 library(rethinking)
 library(ggplot2)
-
 ```
 
 Define a grid of 20 probabilities of water from 0 to 1 and set the prior probability of each one to 1,
@@ -359,8 +377,9 @@ Test the statistical model with simulated observations from the scientific model
 **Questions:**
 
 1.  **How do we get the complete distributions for each unknown**
-2.  **How do we get the posterior joint distribution for all three. This should be a 3-dimensional distribution that we could plot.**
-3.  **Given the model, are the distributions of all of these variables independent?**
+2.  IN the precis funciton below, what does the mean mean?
+3.  **How do we get the posterior joint distribution for all three. This should be a 3-dimensional distribution that we could plot.**
+4.  **Given the model, are the distributions of all of these variables independent? (THe answer to this is no.)**
 
 ```{r}
 # Simulate a sample of 3 people
@@ -407,7 +426,7 @@ precis(m3.2)
 
 To look at details can use pairs.
 
--   The diagonal plots the probability density of the posterior distribution of each of the unknowns.
+-   The diagonal plots the probability density of the posterior distribution of each of the unknowns. \[How does this relate to the other unknowns, since these unknowns are usually dependent. HOw is the calculated from the joint?\]
 
 -   The three graphs in the upper right plot the relationship between each pair of unknowns
 
@@ -478,7 +497,7 @@ par(mfrow = c(1, 1), pty = "m")
 
 In Bayesian regression there is no single line, you have to sample lines from the posterior, which is why McElreath says the posterior is full of lines. You want to use the entire posterior—there is not one line that is the right answer.
 
-These lines estimate the average weight for a person with a given height. One critical issue is that since these are samples, these lines represent the posterior predictive distrbution which represents
+These lines estimate the average weight for a person with a given height.
 
 Let's return to the graph after estimating the posterior with the full dataset:
 
@@ -494,7 +513,7 @@ This plots a sample of lines drawn from the posterior, but does not show $\sigma
 
 McElreath's 2023 - 03 video lecture does not explain this code very well, so I will step through it here in detail.
 
-We first create a list of ranging from low to high:
+We first create a list of heights ranging from low to high:
 
 ```{r}
 height_seq <- seq(130, 190, len = 20)
@@ -508,7 +527,7 @@ W_postpred <- sim(m3.2, data=list(H=height_seq)) # sim defaults to N = 1000 samp
 plot(rep(height_seq, 1000), as.vector(W_postpred))
 ```
 
-There is a lot of overplotting in this graph so it is hard to see the distribution of the values in each column.
+There is a lot of overplotting in this graph so it is hard to see the distribution of the values in each column. Here is a violin plot that better shows the distribution of the posterior predictive weights:
 
 ```{r}
 library(ggplot2)
