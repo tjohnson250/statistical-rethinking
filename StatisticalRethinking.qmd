@@ -77,7 +77,7 @@ xlab="probability of water" , ylab="unstandardized posterior probability" )
 mtext( "20 points" )
 ```
 
-Standardize the posterior by dividing each unstabilized value by the sum of all values. This gives us the posterior distribution of possible proportions of water given that we have observed 6 water out of 9 tosses. Since we have a discrete set of possible proportions of water, the sum of standaridized probabilities will sum to 1.
+Standardize the posterior by dividing each unstabilized value by the sum of all values. This gives us the posterior distribution of possible proportions of water given that we have observed 6 water out of 9 tosses. Since we have a discrete set of possible proportions of water, the sum of standardized probabilities will sum to 1.
 
 ```{r}
 posterior <- unstd.posterior / sum(unstd.posterior)
@@ -327,7 +327,7 @@ $$
 
 where $\alpha$ is the intercept, $\beta$ is the slope, and $\sigma$ defines the error around the line: how much variation there is in individual people around the expectation.
 
-This probability is a function of the number of ways we could see the observation $W_i$ given $W_i, \alpha, \beta$ and $\sigma$ times the prior probability of $\alpha, \beta$ and $\sigma$:
+This probability is a function of the number of ways we could see the observation $W_i$ given $H_i, \alpha, \beta$ and $\sigma$ times the prior probability of $\alpha, \beta$ and $\sigma$:
 
 $$
 \text{Pr}(\alpha, \beta, \sigma | H_i, W_i) = \frac{\Pr(W_i | H_i, \alpha, \beta, \sigma) \Pr(\alpha, \beta, \sigma)}{Z}
@@ -382,7 +382,7 @@ Test the statistical model with simulated observations from the scientific model
 4.  **Given the model, are the distributions of all of these variables independent? (THe answer to this is no.)**
 
 ```{r}
-# Simulate a sample of 3 people
+# Simulate a sample of 10m2 people
 set.seed(93)
 H <- runif(10, 130, 170)
 W <- sim_weight(H, b=0.5, sd=5)
