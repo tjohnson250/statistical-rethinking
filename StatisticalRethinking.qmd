@@ -359,6 +359,28 @@ W_i &\sim \text{Normal}(\mu_i, \sigma) \\
 \end{align*}
 $$
 
+```{r}
+# Set up a 2x2 plotting area
+par(mfrow = c(2, 2))
+
+# Prior for a (intercept)
+curve(dnorm(x, 0, 10), from = -30, to = 30, 
+      main = "Prior for a (intercept)",
+      xlab = "a", ylab = "Density")
+
+# Prior for b (slope)
+curve(dunif(x, 0, 1), from = -0.5, to = 1.5,
+      main = "Prior for b (slope)", 
+      xlab = "b", ylab = "Density")
+
+# Prior for sigma
+curve(dunif(x, 0, 10), from = -2, to = 12,
+      main = "Prior for sigma",
+      xlab = "sigma", ylab = "Density")
+
+par(mfrow = c(1, 1))  # Reset plotting area
+```
+
 Now that we have specified some priors, we can do a prior predictive simulation to check the priors and plot some lines based on the priors for $\alpha$ and $\beta$ that we have specified above.
 
 ```{r}
